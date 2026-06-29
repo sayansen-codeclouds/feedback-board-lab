@@ -1,0 +1,74 @@
+# Cursor Rules — Feedback Board (Training Lab)
+
+## Project context
+- Next.js 14 App Router; React client components under `app/`.
+- No database. Feedback persisted to `data/feedback.json` via `lib/store.js` (`readAll` / `writeAll`).
+- API surface: single route at `app/api/feedback/route.js` (GET / POST / DELETE).
+- Node >= 18. Only `zod` and `vitest` may be added as new dependencies during this lab.
+
+---
+
+## Standing rules — always apply, no exceptions
+
+### 1. No new dependencies without asking
+Do NOT add any `npm install …` command or modify `package.json` dependencies without
+explicitly asking the user first. Exception: `zod` (for validation) and `vitest` (for
+tests) are pre-approved for this lab.
+
+### 2. Validate ALL API inputs — use zod, return 400 on failure
+Every POST / PATCH / PUT handler must parse and validate the request body with a zod
+schema before touching storage. On validation failure return:
+```js
+return Response.json({ error: result.error.flatten() }, { status: 400 });
+```
+Name and text fields must have minimum and maximum length constraints.
+
+### 3. Never hardcode secrets — read from process.env
+Any secret value (API keys, tokens, passwords) MUST be read from environment variables:
+```js
+const ADMIN_KEY = process.env.ADMIN_KEY;
+```
+Never commit literal secret strings to source files. If a variable is missing at runtime,
+fail loudly (throw or return 500) rather than silently.
+
+### 4. Authorization must be enforced server-side
+Never trust authorization flags or roles supplied by the client (e.g., `body.isAdmin`).
+Authorization checks belong in the API route, using a server-side secret or session token
+(e.g., compare an `Authorization` header against `process.env.ADMIN_KEY`):
+```js
+const token = request.headers.get('authorization')?.replace('Bearer ', '');
+if (token !== process.env.ADMIN_KEY) {
+  return Response.json({ error: 'Forbidden' }, { status: 403 });
+}
+```
+
+### 5. Never render user content with dangerouslySetInnerHTML
+User-supplied text (names, feedback) must be rendered as plain text nodes, never as raw
+HTML. Replace `dangerouslySetInnerHTML={{ __html: value }}` with `<p>{value}</p>`.
+If HTML rendering is ever required, use a trusted sanitization library (e.g., DOMPurify)
+— do NOT pass raw user input directly.
+
+### 6. Every behaviour change needs a test
+Any new or modified API behaviour must be accompanied by at least one Vitest test in
+`__tests__/`. Tests must cover the happy path and the main error/rejection cases (e.g.,
+missing fields → 400, missing auth → 403).
+
+### 7. Never swallow errors with empty catch blocks
+Empty `catch` blocks that silently discard exceptions are forbidden:
+```js
+// FORBIDDEN
+try { writeAll(items); } catch (e) {}
+```
+Always log the error and return an appropriate HTTP error response:
+```js
+try {
+  writeAll(items);
+} catch (err) {
+  console.error('[feedback] write failed:', err);
+  return Response.json({ error: 'Storage error' }, { status: 500 });
+}
+```
+
+### 8. Ask before any destructive action
+Before deleting files, removing data, running migrations, or any action that cannot be
+trivially undone — STOP and ask the user for explicit confirmation.

@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+build
+
+# Local env files (attendees create these during the lab — never commit secrets)
+.env
+.env.local
+.env*.local
+
+# Misc
+.DS_Store
+*.log
+
+# Facilitator answer key — not for the public lab repo
+SOLUTION-NOTES.md
