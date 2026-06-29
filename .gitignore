@@ -14,3 +14,6 @@ build
 
 # Facilitator answer key — not for the public lab repo
 SOLUTION-NOTES.md
+
+# Runtime data — regenerated from data/feedback.example.json on first run
+/data/feedback.json

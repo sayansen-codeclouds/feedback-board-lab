@@ -1,0 +1,37 @@
+name: Lab checks
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install
+      - name: Tests (Activity 2 — add Vitest tests)
+        run: npm test
+      - name: No hardcoded admin secret (Activity 1)
+        run: |
+          if grep -rn "sk-admin-12345" app lib 2>/dev/null; then
+            echo "::error::Hardcoded ADMIN secret still in source — move it to process.env"; exit 1;
+          fi
+          echo "OK — no hardcoded secret"
+      - name: No dangerouslySetInnerHTML (Activity 1 — XSS)
+        run: |
+          if grep -rn "dangerouslySetInnerHTML" app 2>/dev/null; then
+            echo "::error::dangerouslySetInnerHTML still present — render user content as plain text"; exit 1;
+          fi
+          echo "OK — no dangerouslySetInnerHTML"
+      - name: Server-side authz, not client-trusted (Activity 1)
+        run: |
+          if grep -rn "body.isAdmin" app/api 2>/dev/null; then
+            echo "::error::DELETE still trusts client-supplied isAdmin — enforce auth server-side (403)"; exit 1;
+          fi
+          echo "OK — no client-trusted isAdmin in API"
