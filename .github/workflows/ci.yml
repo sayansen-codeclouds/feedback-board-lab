@@ -2,7 +2,6 @@ name: Lab checks
 
 on:
   pull_request:
-  push:
 
 jobs:
   checks:
