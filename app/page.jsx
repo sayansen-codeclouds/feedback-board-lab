@@ -2,17 +2,16 @@
 
 import { useState, useEffect } from 'react';
 
-// FLAW #4: Authorization decided entirely on the client — anyone can flip this to true
-const isAdmin = true;
-
 export default function FeedbackPage() {
   const [feedbackList, setFeedbackList] = useState([]);
   const [name, setName] = useState('');
   const [text, setText] = useState('');
   const [status, setStatus] = useState('');
+  const [adminKey, setAdminKey] = useState('');
 
   async function loadFeedback() {
     const res = await fetch('/api/feedback');
+    if (!res.ok) return;
     const data = await res.json();
     setFeedbackList(data);
   }
@@ -24,26 +23,36 @@ export default function FeedbackPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setStatus('Submitting...');
-    // FLAW #2: No client-side validation either — any shape/length goes
-    await fetch('/api/feedback', {
+    const res = await fetch('/api/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, text }),
     });
-    setName('');
-    setText('');
-    setStatus('Submitted!');
-    loadFeedback();
+    if (res.ok) {
+      setName('');
+      setText('');
+      setStatus('Submitted!');
+      loadFeedback();
+    } else {
+      const data = await res.json();
+      setStatus(`Error: ${data.error ?? 'Submission failed'}`);
+    }
   }
 
   async function handleDelete(id) {
-    // FLAW #4: Sends isAdmin from client; server trusts it without real auth
-    await fetch('/api/feedback', {
+    const res = await fetch('/api/feedback', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, isAdmin }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminKey}`,
+      },
+      body: JSON.stringify({ id }),
     });
-    loadFeedback();
+    if (res.ok) {
+      loadFeedback();
+    } else {
+      setStatus('Delete failed: wrong admin key.');
+    }
   }
 
   return (
@@ -67,8 +76,17 @@ export default function FeedbackPage() {
         <button type="submit" style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
           Submit
         </button>
-        {status && <p style={{ color: 'green' }}>{status}</p>}
+        {status && <p style={{ color: status.startsWith('Error') || status.startsWith('Delete') ? '#c00' : 'green' }}>{status}</p>}
       </form>
+
+      <h2 style={{ marginTop: '2rem' }}>Admin</h2>
+      <input
+        type="password"
+        placeholder="Admin key (required to delete entries)"
+        value={adminKey}
+        onChange={(e) => setAdminKey(e.target.value)}
+        style={{ padding: '0.5rem', fontSize: '1rem', maxWidth: '500px', width: '100%' }}
+      />
 
       <h2 style={{ marginTop: '2rem' }}>All Feedback</h2>
       {feedbackList.length === 0 && <p>No feedback yet.</p>}
@@ -85,18 +103,15 @@ export default function FeedbackPage() {
           >
             <strong>{item.name}</strong>
             <span style={{ color: '#888', marginLeft: '1rem', fontSize: '0.85rem' }}>
-              {item.createdAt}
+              {item.displayTime || item.createdAt}
             </span>
-            {/* FLAW #3: Stored XSS — item.text rendered as raw HTML */}
-            <p dangerouslySetInnerHTML={{ __html: item.text }} />
-            {isAdmin && (
-              <button
-                onClick={() => handleDelete(item.id)}
-                style={{ background: '#c00', color: '#fff', border: 'none', padding: '0.25rem 0.75rem', cursor: 'pointer', borderRadius: '3px' }}
-              >
-                Delete
-              </button>
-            )}
+            <p>{item.text}</p>
+            <button
+              onClick={() => handleDelete(item.id)}
+              style={{ background: '#c00', color: '#fff', border: 'none', padding: '0.25rem 0.75rem', cursor: 'pointer', borderRadius: '3px' }}
+            >
+              Delete
+            </button>
           </li>
         ))}
       </ul>

@@ -1,63 +1,74 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { readAll, writeAll } from '../../../lib/store';
+import { formatRelativeTime } from '../../../lib/dateUtils';
 
-// FLAW #1: Hardcoded secret committed to source — admin key used for... nothing, really
-const ADMIN_KEY = 'sk-admin-12345'; // admin key
+const ADMIN_KEY = process.env.ADMIN_KEY;
+if (!ADMIN_KEY) {
+  throw new Error('ADMIN_KEY environment variable is not set');
+}
 
-// formatRelativeTime is imported from our date utils
-// FLAW #6 (hallucination artifact): This helper was referenced in AI-generated code but
-// never actually defined or imported. Guarded with typeof check so the app still runs.
-// The call below always falls through to the raw value because the function doesn't exist.
+const feedbackSchema = z.object({
+  name: z.string().min(1).max(100),
+  text: z.string().min(1).max(2000),
+});
 
 export async function GET() {
   const items = readAll();
   const formatted = items.map((item) => ({
     ...item,
-    // from our date utils
-    displayTime: typeof formatRelativeTime === 'function'
-      ? formatRelativeTime(item.createdAt)
-      : item.createdAt,
+    displayTime: formatRelativeTime(item.createdAt),
   }));
   return NextResponse.json(formatted);
 }
 
 export async function POST(request) {
   const body = await request.json();
-  const items = readAll();
 
-  // FLAW #2: No input validation — name/text not checked for type, length, or content
+  const result = feedbackSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json(
+      { error: 'Invalid input', details: result.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  const { name, text } = result.data;
+  const items = readAll();
   const newItem = {
     id: Date.now().toString(),
-    name: body.name,
-    text: body.text,
+    name,
+    text,
     createdAt: new Date().toISOString(),
   };
-
   items.push(newItem);
 
-  // FLAW #5: Silent failure — if the write fails, the error is swallowed entirely
   try {
     writeAll(items);
-  } catch (e) {}
+  } catch (e) {
+    console.error('Failed to write feedback:', e);
+    return NextResponse.json({ error: 'Failed to save feedback' }, { status: 500 });
+  }
 
   return NextResponse.json(newItem, { status: 201 });
 }
 
 export async function DELETE(request) {
-  const body = await request.json();
-
-  // FLAW #4: Trusts isAdmin from the client body — no real authentication
-  if (!body.isAdmin) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || authHeader !== `Bearer ${ADMIN_KEY}`) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const body = await request.json();
   const items = readAll();
   const updated = items.filter((item) => item.id !== body.id);
 
-  // FLAW #5: Same silent failure pattern on delete write
   try {
     writeAll(updated);
-  } catch (e) {}
+  } catch (e) {
+    console.error('Failed to delete feedback:', e);
+    return NextResponse.json({ error: 'Failed to delete feedback' }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }
